@@ -1,0 +1,54 @@
+correlation:
+  schema_version: "1.0"
+  id: "ATR-COR-2026-00002"
+  title: "A2A delegated authority abuse with memory poisoning"
+  description: >
+    Detects the multi-agent chain where one agent delegates to another,
+    the delegate writes a persistence payload into a memory store, and a
+    later session in the same delegation root reads that store and
+    exfiltrates. Grouping by session.id alone would split this across
+    the delegation hop, so this rule joins on delegation.root.
+  status: "draft"
+  severity: "critical"
+  author: "Santhosh"
+  date: "2026-10-21"
+  license: "MIT"
+  references:
+    owasp_agentic: ["ASI03", "ASI04", "ASI09"]
+    mitre_atlas: ["AML.T0048", "AML.T0024"]
+
+source_rules:
+  - alias: "delegate"
+    rule_id: "ATR-2026-00030"
+  - alias: "memory_write"
+    rule_id: "ATR-2026-00345"
+  - alias: "exfil"
+    rule_id: "ATR-2026-00610"
+
+correlation_logic:
+  type: "temporal_sequence"
+  sequence:
+    - alias: "delegate"
+    - alias: "memory_write"
+    - alias: "exfil"
+  join_keys:
+    - "delegation.root"
+  window:
+    type: "session_chain"
+    max_session_count: 5
+    max_wall_time: "30d"
+
+response:
+  severity_uplift: "critical"
+  actions: ["alert", "snapshot", "quarantine", "terminate_session"]
+  message_template: >
+    [ATR-COR-2026-00002] Delegation at {delegate.event_id} -> memory
+    poisoning at {memory_write.event_id} -> exfiltration at
+    {exfil.event_id}. Recommend session termination and a memory store
+    audit.
+
+test_cases:
+  true_positive_streams:
+    - "tests/correlation-streams/ATR-COR-2026-00002/positive.jsonl"
+  true_negative_streams:
+    - "tests/correlation-streams/ATR-COR-2026-00002/negative.jsonl"

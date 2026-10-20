@@ -1,0 +1,53 @@
+correlation:
+  schema_version: "1.0"
+  id: "ATR-COR-2026-00001"
+  title: "Indirect prompt injection to context exfiltration"
+  description: >
+    Detects the multi-step chain where a retrieved document carries an
+    injected instruction, the agent acts on it by calling a tool, and the
+    agent then sends context to an external host. The single-event rules
+    fire independently on each step; this rule joins them into one
+    high-confidence chain.
+  status: "draft"
+  severity: "critical"
+  author: "Santhosh"
+  date: "2026-10-21"
+  license: "MIT"
+  references:
+    owasp_agentic: ["ASI01", "ASI05"]
+    mitre_atlas: ["AML.T0051", "AML.T0024"]
+
+source_rules:
+  - alias: "injection"
+    rule_id: "ATR-2026-00002"
+  - alias: "tool_call"
+    rule_id: "ATR-2026-00115"
+  - alias: "exfil"
+    rule_id: "ATR-2026-00610"
+
+correlation_logic:
+  type: "temporal_sequence"
+  sequence:
+    - alias: "injection"
+    - alias: "tool_call"
+    - alias: "exfil"
+  join_keys:
+    - "agent.id"
+    - "session.id"
+  window:
+    type: "wall_time"
+    duration: "30m"
+
+response:
+  severity_uplift: "critical"
+  actions: ["alert", "snapshot", "quarantine"]
+  message_template: >
+    [ATR-COR-2026-00001] Indirect injection at {injection.event_id} ->
+    tool call at {tool_call.event_id} -> exfiltration at {exfil.event_id}.
+    Recommend session quarantine and review of the retrieved document.
+
+test_cases:
+  true_positive_streams:
+    - "tests/correlation-streams/ATR-COR-2026-00001/positive.jsonl"
+  true_negative_streams:
+    - "tests/correlation-streams/ATR-COR-2026-00001/negative.jsonl"
