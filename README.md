@@ -1,12 +1,24 @@
 # agentic-attack-chain
 
+[![CI](https://github.com/Santhosh595/agentic-attack-chain/actions/workflows/ci.yml/badge.svg)](https://github.com/Santhosh595/agentic-attack-chain/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **A correlation engine for AI-agent attack chains.**
 
 ATR (Agent Threat Rules) is becoming the detection standard for AI agents — "Sigma
 for AI agents." Its rule corpus is stable and in production: it ships in Microsoft
 AGT, Cisco AI Defense, MISP, Gen Digital and FINOS. But its **multi-event
-correlation layer does not exist**. The spec is written and unratified, the shipped
-engine contains no correlation code, and none of the open upstream issues touch it.
+correlation layer is not implemented**. The spec is written and unratified, the
+shipped engines contain no general implementation of it, and none of the open
+upstream issues touch it.
+
+What upstream *does* have is an ad-hoc sequence tracker: the TypeScript engine
+has a `SessionTracker` that groups events by `sessionId` (`src/session-tracker.ts`,
+`src/modules/session.ts`). That covers one narrow case — ordered steps inside
+one session — and nothing else. It is not an implementation of the published
+correlation specification, which defines five correlation types, six standard
+join keys, four window forms, and bounded state with eviction.
 
 This project implements that missing layer, and bridges OpenTelemetry GenAI
 telemetry into it.
@@ -156,6 +168,45 @@ This is an independent implementation of a **proposed, unratified** upstream
 specification. It is not affiliated with or endorsed by the ATR project. The
 upstream spec may change; this engine implements the spec as published on
 2026-10-21, with the vendored schema pinned by hash.
+
+### What is built, and what is not
+
+**Built and tested (149 tests, run in CI on Python 3.11 and 3.12):**
+
+- the full observation model (ATR Observation Format v1.0)
+- the full rule loader — schema validation plus the semantic checks the
+  schema cannot express
+- all five correlation types, all six join keys, all four window forms
+- bounded pending-chain state with `correlation_state_evicted`
+- the OpenTelemetry GenAI span → observation bridge
+- the CLI: `correlate`, `validate`, `coverage`
+- a conformance gate that enforces upstream's fixture-stream convention
+
+**Not built yet — do not read this as a finished product:**
+
+| Missing | Consequence |
+|---|---|
+| **Only 2 rules ship** (`ATR-COR-2026-00001`, `-00002`) | The engine is exercised by 2 chains, not by a corpus. A rule-shape bug that only appears on a third rule type would not be caught. |
+| **No attack corpus** | There is no body of real multi-step attack traces. The fixtures are hand-built to exercise join-key and window behaviour. |
+| **No benign corpus** | The hard half of detection work — benign multi-step chains that must *not* fire — is not started. Without it, false-positive rate is unknown, not zero. |
+| **No live agent to attack** | Nothing yet produces OTel spans from a running agent, so the bridge is tested against synthetic spans only. |
+| **No findings output / OWASP-ATLAS mapping at finding time** | The `severity_uplift` path exists; the per-finding OWASP Agentic ID and MITRE ATLAS ID mapping is not yet emitted. |
+
+The engine is a **working, tested implementation of the correlation
+mechanism**, and that mechanism is the thing that was missing upstream. It is
+not yet a detection product: a detection product needs the attack corpus and
+the benign corpus, and those are the next two pieces of work, not the last
+two.
+
+### Deliberate scope boundaries
+
+- **Atomic rules never block on correlation.** A single-event ATR rule still
+  fires on its own; correlation adds a higher-confidence finding, it does not
+  gate the low-confidence ones.
+- **"Not observed" is never reported as "observed absent."** The coverage
+  command reports which dimensions the host can actually see.
+- **Join keys are ANDed.** A differing `agent.id` or `delegation.root` must
+  prevent correlation, even when every other key matches.
 
 ## License
 
